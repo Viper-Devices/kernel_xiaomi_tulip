@@ -12,6 +12,9 @@ obj-$(CONFIG_SMB138X_CHARGER)	+= battery.o smb138x-charger.o smb-lib.o pmic-vote
 obj-$(CONFIG_QPNP_QNOVO)	+= battery.o qpnp-qnovo.o
 
 
+
 #TODO: remove me b/62058353
 subdir-ccflags-y += \
 	-Wno-duplicate-decl-specifier
+
+obj-$(CONFIG_QNS_SYSTEM)	+= qns_system.o
