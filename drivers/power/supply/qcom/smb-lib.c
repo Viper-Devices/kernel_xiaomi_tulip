@@ -1,5 +1,4 @@
 /* Copyright (c) 2016-2018 The Linux Foundation. All rights reserved.
- * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -28,8 +27,8 @@
 #include "storm-watch.h"
 #include "fg-core.h"
 
-extern int hwc_check_global;
-#ifdef CONFIG_KERNEL_CUSTOM_E7S
+
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 #define LCT_JEITA_CCC_AUTO_ADJUST  1
 #else
 #define LCT_JEITA_CCC_AUTO_ADJUST  0
@@ -374,7 +373,7 @@ static int smblib_adjust_jeita_cc_config(struct smb_charger *chg, int val_u)
 	if ((val_u == chg->batt_profile_fcc_ua) && (current_cc_minus_ua != JEITA_CC_COMP_CFG_IN_UEFI * 1000))
 	{
 		rc = smblib_set_charge_param(chg, &chg->param.jeita_cc_comp, JEITA_CC_COMP_CFG_IN_UEFI * 1000);
-		pr_err("smblib_adjust_jeita_cc_config jeita cc has changed ,write it back ,write result = %d\n", rc);
+		pr_err("smblib_adjust_jeita_cc_config jeita cc has changed , write it back , write result = %d\n", rc);
 
 	}
 	else if ((val_u < chg->batt_profile_fcc_ua) && ((chg->batt_profile_fcc_ua - val_u) <= JEITA_CC_COMP_CFG_IN_UEFI * 1000))
@@ -383,7 +382,7 @@ static int smblib_adjust_jeita_cc_config(struct smb_charger *chg, int val_u)
 		{
 			current_cc_minus_ua = JEITA_CC_COMP_CFG_IN_UEFI * 1000 - (chg->batt_profile_fcc_ua - val_u);
 			rc = smblib_set_charge_param(chg, &chg->param.jeita_cc_comp, current_cc_minus_ua);
-			pr_err("smblib_adjust_jeita_cc_config jeita cc need to decrease to %d,write result = %d\n", current_cc_minus_ua, rc);
+			pr_err("smblib_adjust_jeita_cc_config jeita cc need to decrease to %d, write result = %d\n", current_cc_minus_ua, rc);
 		}
 		else
 		{
@@ -394,7 +393,7 @@ static int smblib_adjust_jeita_cc_config(struct smb_charger *chg, int val_u)
 	else if ((val_u < chg->batt_profile_fcc_ua) && ((chg->batt_profile_fcc_ua - val_u) > JEITA_CC_COMP_CFG_IN_UEFI * 1000))
 	{
 		rc = smblib_set_charge_param(chg, &chg->param.jeita_cc_comp, 0);
-		pr_err("smblib_adjust_jeita_cc_config jeita need to set to zero,write result = %d\n", rc);
+		pr_err("smblib_adjust_jeita_cc_config jeita need to set to zero, write result = %d\n", rc);
 	}
 	else
 	{
@@ -566,8 +565,6 @@ static int smblib_set_usb_pd_allowed_voltage(struct smb_charger *chg,
 static int smblib_request_dpdm(struct smb_charger *chg, bool enable)
 {
 	int rc = 0;
-	if (chg->pr_swap_in_progress)
-		return 0;
 
 	/* fetch the DPDM regulator */
 	if (!chg->dpdm_reg && of_get_property(chg->dev->of_node,
@@ -644,6 +641,7 @@ static const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
 
 	smblib_err(chg, "lct battery charge APSD=%s PD=%d\n",
 					apsd_result->name, chg->pd_active);
+
 	return apsd_result;
 }
 
@@ -1002,13 +1000,8 @@ override_suspend_config:
 		if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB)
 			/* For std cable with type = SDP never override */
 			override = false;
-		#ifdef CONFIG_KERNEL_CUSTOM_FACTORY
-		else if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_CDP
-			&& icl_ua == 500000)
-		#else
 		else if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_CDP
 			&& icl_ua == 1500000)
-		#endif
 			/*
 			 * For std cable with type = CDP override only if
 			 * current is not 1500mA
@@ -1251,7 +1244,7 @@ static int smblib_hvdcp_hw_inov_dis_vote_callback(struct votable *votable,
 	struct smb_charger *chg = data;
 	int rc;
 
-	#if (defined (CONFIG_KERNEL_CUSTOM_D2S) || defined (CONFIG_KERNEL_CUSTOM_E7S) || defined(CONFIG_KERNEL_CUSTOM_F7A) || defined(CONFIG_KERNEL_CUSTOM_E7T))
+	#if defined (CONFIG_KERNEL_CUSTOM_E7T)
 	disable = 0;
 	#endif
 	if (disable) {
@@ -1953,30 +1946,6 @@ int smblib_set_prop_input_suspend(struct smb_charger *chg,
 	return rc;
 }
 
-#ifdef XIAOMI_CHARGER_RUNIN
-int lct_set_prop_input_suspend(struct smb_charger *chg,
-				  const union power_supply_propval *val)
-{
-	int rc = 0;
-	union power_supply_propval pval = {0, };
-
-	pr_err("[%s] val=%d\n", __func__, val->intval);
-	if (val->intval) {
-		pval.intval = 0;
-		smblib_set_prop_input_suspend(chg, &pval);
-	} else {
-		pval.intval = 1;
-		chg->pl_psy =  power_supply_get_by_name("parallel");
-		if (chg->pl_psy) {
-			power_supply_set_property(chg->pl_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &pval);
-		}
-		smblib_set_prop_input_suspend(chg, &pval);
-	}
-	power_supply_changed(chg->batt_psy);
-	return rc;
-}
-#endif
-
 int smblib_set_prop_batt_capacity(struct smb_charger *chg,
 				  const union power_supply_propval *val)
 {
@@ -1991,9 +1960,6 @@ int smblib_set_prop_batt_capacity(struct smb_charger *chg,
 extern union power_supply_propval lct_therm_lvl_reserved;
 extern bool lct_backlight_off;
 extern int LctIsInCall;
-#if defined(CONFIG_KERNEL_CUSTOM_D2S)
-extern int LctIsInVideo;
-#endif
 extern int LctThermal;
 extern int hwc_check_india;
 #endif
@@ -2014,24 +1980,9 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 		val->intval, chg->system_temp_level, LctThermal, lct_backlight_off, LctIsInCall, hwc_check_india);
 
 	if (LctThermal == 0) {
-	    #if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		if (val->intval < 6)
-		#endif
 		lct_therm_lvl_reserved.intval = val->intval;
 	}
-#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-	if ((lct_backlight_off) && (LctIsInCall == 0) && (val->intval > 1)) {
-	    return 0;
-	}
-#elif defined(CONFIG_KERNEL_CUSTOM_D2S)
-	if ((lct_backlight_off) && (LctIsInCall == 0) && (val->intval > 2)) {
-		    return 0;
-	}
-#elif defined(CONFIG_KERNEL_CUSTOM_F7A)
-	if ((lct_backlight_off) && (LctIsInCall == 0) && (val->intval > 2)) {
-		return 0;
-	}
-#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 	if (hwc_check_india == 1) {
 		if ((lct_backlight_off) && (LctIsInCall == 0) && (val->intval > 3)) {
 		    return 0;
@@ -2050,24 +2001,17 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 	    return 0;
 	}
 #endif
-#if defined(CONFIG_KERNEL_CUSTOM_D2S)
-	if ((LctIsInCall == 1) && (val->intval != 3)) {
-	    return 0;
-	}
-#elif defined(CONFIG_KERNEL_CUSTOM_F7A)
-	if ((LctIsInCall == 1) && (val->intval != 4)) {
-			return 0;
-		}
-#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
+
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 	if ((LctIsInCall == 1) && (val->intval != 5)) {
 		return 0;
 	}
-#endif
-	#if defined(CONFIG_KERNEL_CUSTOM_D2S)
-	if ((LctIsInVideo == 1) && (val->intval != 6) && (lct_backlight_off == 0) && (hwc_check_india == 1)) {
+#else
+	if ((LctIsInCall == 1) && (val->intval != 3)) {
 	    return 0;
 	}
-	#endif
+#endif
+
 	if (val->intval == chg->system_temp_level)
 		return 0;
 	#endif
@@ -2078,12 +2022,7 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 	{
 		vote(chg->pl_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
 	}
-#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-	else if ((hwc_check_india == 0) && (chg->system_temp_level <= 2))
-	{
-		vote(chg->pl_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
-	}
-#elif defined (CONFIG_KERNEL_CUSTOM_E7T)
+#if defined (CONFIG_KERNEL_CUSTOM_E7T)
 	else if (chg->system_temp_level <= 2)
 	{
 		vote(chg->pl_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
@@ -2208,16 +2147,9 @@ static int smblib_force_vbus_voltage(struct smb_charger *chg, u8 val)
 	return rc;
 }
 
-#if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-#define MAX_PLUSE_COUNT_ALLOWED 8
-#elif defined(CONFIG_KERNEL_CUSTOM_E7S)
+#if defined (CONFIG_KERNEL_CUSTOM_E7T)
 #define MAX_PLUSE_COUNT_ALLOWED 15
-#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
-#define MAX_PLUSE_COUNT_ALLOWED 15
-#else
-#define MAX_PLUSE_COUNT_ALLOWED 8
 #endif
-
 int smblib_dp_dm(struct smb_charger *chg, int val)
 {
 	int target_icl_ua, rc = 0;
@@ -2451,11 +2383,6 @@ int smblib_get_prop_usb_voltage_max(struct smb_charger *chg,
 int smblib_get_prop_usb_voltage_now(struct smb_charger *chg,
 				    union power_supply_propval *val)
 {
-  	int rc = 0;
-
-	rc = smblib_get_prop_usb_present(chg, val);
-	if (rc < 0 || !val->intval)
-		return rc;
 	if (!chg->iio.usbin_v_chan ||
 		PTR_ERR(chg->iio.usbin_v_chan) == -EPROBE_DEFER)
 		chg->iio.usbin_v_chan = iio_channel_get(chg->dev, "usbin_v");
@@ -2721,25 +2648,11 @@ int smblib_get_prop_die_health(struct smb_charger *chg,
 }
 
 #define SDP_CURRENT_UA			500000
-#ifdef CONFIG_KERNEL_CUSTOM_FACTORY
-#define CDP_CURRENT_UA			500000
-#else
 #define CDP_CURRENT_UA			1500000
-#endif
 #define DCP_CURRENT_UA			2000000
-#if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
 #define HVDCP2_CURRENT_UA		1500000
-#else
-#define HVDCP2_CURRENT_UA		1500000
-#endif
-#if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-#define HVDCP_CURRENT_UA		2900000
-#elif defined(CONFIG_KERNEL_CUSTOM_E7S)
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 #define HVDCP_CURRENT_UA		2000000
-#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
-#define HVDCP_CURRENT_UA		2000000
-#else
-#define HVDCP_CURRENT_UA		2900000
 #endif
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
@@ -2778,7 +2691,9 @@ int smblib_set_prop_pd_current_max(struct smb_charger *chg,
 
 	return rc;
 }
+
 #define FLOAT_CURRENT_UA		1000000
+
 static int smblib_handle_usb_current(struct smb_charger *chg,
 					int usb_current)
 {
@@ -3327,14 +3242,13 @@ int smblib_get_charge_current(struct smb_charger *chg,
 	/* QC 3.0 adapter */
 	if (apsd_result->bit & QC_3P0_BIT) {
 		*total_current_ua = HVDCP_CURRENT_UA;
-		pr_info("QC3.0 set icl to 2.9A\n");
 		return 0;
 	}
 
 	/* QC 2.0 adapter */
 	if (apsd_result->bit & QC_2P0_BIT) {
 		*total_current_ua = HVDCP2_CURRENT_UA;
-		pr_info("QC2.0 set icl to 1.5A\n");
+		pr_info("QC2.0 set icl to 1.8A\n");
 		return 0;
 	}
 
@@ -3649,6 +3563,7 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		if (chg->pl_psy) {
 			power_supply_set_property(chg->pl_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &pval);
 		}
+
 		/* Schedule work to enable parallel charger */
 		vote(chg->awake_votable, PL_DELAY_VOTER, true, 0);
 		schedule_delayed_work(&chg->pl_enable_work,
@@ -3953,19 +3868,9 @@ static void smblib_force_legacy_icl(struct smb_charger *chg, int pst)
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, false, 0);
 		break;
 	case POWER_SUPPLY_TYPE_USB_CDP:
-		#if defined (CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		vote(chg->usb_icl_votable, USER_VOTER, false, 0);
-		#endif
-		#ifdef CONFIG_KERNEL_CUSTOM_FACTORY
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 500000);
-		#else
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1500000);
-		#endif
 		break;
 	case POWER_SUPPLY_TYPE_USB_DCP:
-		#if defined (CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		vote(chg->usb_icl_votable, USER_VOTER, false, 0);
-		#endif
 		typec_mode = smblib_get_prop_typec_mode(chg);
 		rp_ua = get_rp_based_dcp_current(chg, typec_mode);
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, rp_ua);
@@ -3976,42 +3881,24 @@ static void smblib_force_legacy_icl(struct smb_charger *chg, int pst)
 		 * limit ICL to 100mA, the USB driver will enumerate to check
 		 * if this is a SDP and appropriately set the current
 		 */
-		#if defined (CONFIG_KERNEL_CUSTOM_E7S)
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 500000);
-		#elif defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		vote(chg->usb_icl_votable, USER_VOTER, false, 0);
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1000000);
-		#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
+		#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1000000);
 		#else
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1000000);
+		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 500000);
 		#endif
 		smblib_err(chg, "lct battery smblib_force_legacy_icl float charger\n");
 		break;
 	case POWER_SUPPLY_TYPE_USB_HVDCP:
-		#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1500000);
-		#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
+		#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2000000);
-		#elif defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		vote(chg->usb_icl_votable, USER_VOTER, true, 1500000);
 		#else
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1500000);
 		#endif
 		smblib_err(chg, "lct battery smblib_force_legacy_icl qc2.0\n");
 		break;
 	case POWER_SUPPLY_TYPE_USB_HVDCP_3:
-		#if defined (CONFIG_KERNEL_CUSTOM_E7S)
+		#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2000000);
-		#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2000000);
-		#elif defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-		vote(chg->usb_icl_votable, USER_VOTER, false, 0);
-		if (hwc_check_global){
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2300000);
-		}else{
-		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 2900000);
-		}
 		#else
 		vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 3000000);
 		#endif
@@ -4103,7 +3990,7 @@ static void smblib_handle_apsd_done(struct smb_charger *chg, bool rising)
 			smblib_set_prop_pd_active(chg, &pval);
 			chg->float_rerun_apsd = false;
 		} else if (apsd_result->bit & FLOAT_CHARGER_BIT) {
-			#if defined (CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A) || defined(CONFIG_KERNEL_CUSTOM_E7T)
+			#if defined (CONFIG_KERNEL_CUSTOM_WAYNE)
 			vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 1000000);
 			#else
 			vote(chg->usb_icl_votable, LEGACY_UNKNOWN_VOTER, true, 500000);
@@ -4221,7 +4108,7 @@ static int typec_try_sink(struct smb_charger *chg)
 	 * give opportunity to the other side to be a SRC,
 	 * for tDRPTRY + Tccdebounce time
 	 */
-	msleep(100);
+	msleep(120);
 
 	rc = smblib_read(chg, TYPE_C_STATUS_4_REG, &stat);
 	if (rc < 0) {
@@ -4298,7 +4185,7 @@ try_wait_src:
 	}
 
 	/* Need to be in this state for tDRPTRY time, 75ms~150ms */
-	msleep(150);
+	msleep(80);
 
 	rc = smblib_read(chg, TYPE_C_STATUS_4_REG, &stat);
 	if (rc < 0) {
@@ -4601,6 +4488,7 @@ static void smblib_handle_typec_cc_state_change(struct smb_charger *chg)
 
 	if (chg->pr_swap_in_progress)
 		return;
+
 	typec_mode = smblib_get_prop_typec_mode(chg);
 	if (chg->typec_present && (typec_mode != chg->typec_mode))
 		smblib_handle_rp_change(chg, typec_mode);

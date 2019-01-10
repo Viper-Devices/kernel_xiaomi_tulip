@@ -1,5 +1,4 @@
 /* Copyright (c) 2017 The Linux Foundation. All rights reserved.
- * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -107,10 +106,6 @@ enum {
 	RESTRICT_CHG_CURRENT,
 };
 
-#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-#define ONLY_PM660_CURRENT_UA 2000000
-#endif
-
 /*******
  * ICL *
 ********/
@@ -200,15 +195,6 @@ static void split_settled(struct pl_data *chip)
 		}
 
 		pval.intval = total_current_ua - slave_ua;
-		#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-		if (chip->pl_mode == POWER_SUPPLY_PL_USBIN_USBIN) {
-			pr_err("pl_disable_votable effective main_psy current_ua =%d \n", pval.intval);
-			if (get_effective_result_locked(chip->pl_disable_votable) && (pval.intval > ONLY_PM660_CURRENT_UA)){
-				pr_err("pl_disable_votable effective main_psy force current_ua =%d to %d \n", pval.intval, ONLY_PM660_CURRENT_UA);
-			pval.intval = ONLY_PM660_CURRENT_UA;
-			}
-		}
-		#endif
 		/* Set ICL on main charger */
 		rc = power_supply_set_property(chip->main_psy,
 				POWER_SUPPLY_PROP_CURRENT_MAX, &pval);
@@ -347,7 +333,7 @@ static struct class_attribute pl_attributes[] = {
  *  TAPER  *
 ************/
 #define MINIMUM_PARALLEL_FCC_UA		500000
-#define PL_TAPER_WORK_DELAY_MS		100
+#define PL_TAPER_WORK_DELAY_MS		500
 #define TAPER_RESIDUAL_PCT		75
 static void pl_taper_work(struct work_struct *work)
 {
@@ -516,8 +502,6 @@ static int pl_fcc_vote_callback(struct votable *votable, void *data,
 		if (!chip->batt_psy)
 			return 0;
 
-		rc = power_supply_get_property(chip->batt_psy,
-				POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE, &pval);
 		if (rc < 0) {
 			pr_err("Couldn't read FCC step update status, rc=%d\n",
 				rc);
@@ -543,15 +527,6 @@ static int pl_fcc_vote_callback(struct votable *votable, void *data,
 			return 0;
 		}
 		pval.intval = total_fcc_ua;
-		#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-		if (chip->pl_mode == POWER_SUPPLY_PL_USBIN_USBIN) {
-			pr_err("pl_disable_votable effective total_fcc_ua =%d \n", total_fcc_ua);
-			if (pval.intval > ONLY_PM660_CURRENT_UA) {
-		pval.intval = ONLY_PM660_CURRENT_UA;
-		pr_err("pl_disable_votable effective total_fcc_ua =%d froce to %d \n", total_fcc_ua, pval.intval);
-			}
-		}
-		#endif
 		rc = power_supply_set_property(chip->main_psy,
 				POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
 				&pval);
@@ -821,7 +796,9 @@ stepper_exit:
 	}
 }
 
+
 #define PARALLEL_FLOAT_VOLTAGE_DELTA_UV 100000
+
 static int pl_fv_vote_callback(struct votable *votable, void *data,
 			int fv_uv, const char *client)
 {

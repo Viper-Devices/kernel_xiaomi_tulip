@@ -1,5 +1,4 @@
 /* Copyright (c) 2016-2017 The Linux Foundation. All rights reserved.
- * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,33 +35,27 @@
 
 union power_supply_propval lct_therm_lvl_reserved;
 union power_supply_propval lct_therm_level;
-#if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_F7A)
-union power_supply_propval lct_therm_call_level = {4,};
-#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
-union power_supply_propval lct_therm_call_level = {5,};
-#else
-union power_supply_propval lct_therm_call_level = {3,};
-#endif
 #if defined(CONFIG_KERNEL_CUSTOM_E7T)
+union power_supply_propval lct_therm_call_level = {5,};
 union power_supply_propval lct_therm_globe_level = {1,};
 union power_supply_propval lct_therm_india_level = {2,};
 #else
+union power_supply_propval lct_therm_call_level = {3,};
 union power_supply_propval lct_therm_globe_level = {2,};
 union power_supply_propval lct_therm_india_level = {1,};
 #endif
-
 bool lct_backlight_off;
 int LctIsInCall = 0;
-#if defined(CONFIG_KERNEL_CUSTOM_D2S)
-int LctIsInVideo = 0;
-#endif
 int LctThermal = 0;
 extern int hwc_check_india;
-extern int hwc_check_global;
 extern bool is_poweroff_charge;
 #endif
 
 #define SMB2_DEFAULT_WPWR_UW	8000000
+
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
+static bool miui_charging_enabled = true;
+#endif
 
 #ifdef CONFIG_CHARGER_RUNIN
 static int BatteryTestStatus_enable;
@@ -264,10 +257,6 @@ static int smb2_parse_dt(struct smb2 *chip)
 	chip->dt.no_battery = of_property_read_bool(node,
 						"qcom,batteryless-platform");
 
-	if (hwc_check_global){
-		pr_err("sunxing get global set fcc max 2.3A");
-		chg->batt_profile_fcc_ua = 2300000;
-	}else{
 	rc = of_property_read_u32(node,
 				"qcom,fcc-max-ua", &chg->batt_profile_fcc_ua);
 #if defined(CONFIG_KERNEL_CUSTOM_E7T)
@@ -281,7 +270,7 @@ static int smb2_parse_dt(struct smb2 *chip)
 #endif
 	if (rc < 0)
 		chg->batt_profile_fcc_ua = -EINVAL;
-	}
+
 	rc = of_property_read_u32(node,
 				"qcom,fv-max-uv", &chg->batt_profile_fv_uv);
 	if (rc < 0)
@@ -325,7 +314,7 @@ static int smb2_parse_dt(struct smb2 *chip)
 	if (rc < 0)
 		chip->dt.wipower_max_uw = -EINVAL;
 
-#if (defined(CONFIG_KERNEL_CUSTOM_E7S) || defined(CONFIG_KERNEL_CUSTOM_E7T))
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 	if (hwc_check_india == 1){
 #endif
 	if (of_find_property(node, "qcom,thermal-mitigation", &byte_len)) {
@@ -346,7 +335,7 @@ static int smb2_parse_dt(struct smb2 *chip)
 			return rc;
 		}
 	}
-#if (defined(CONFIG_KERNEL_CUSTOM_E7S) || defined(CONFIG_KERNEL_CUSTOM_E7T))
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 	}
 	else {
 		if (of_find_property(node, "qcom,thermal-mitigation-china", &byte_len)) {
@@ -1033,16 +1022,18 @@ static enum power_supply_property smb2_batt_props[] = {
 	POWER_SUPPLY_PROP_RERUN_AICL,
 	POWER_SUPPLY_PROP_DP_DM,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
-	POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE,
+	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CYCLE_COUNT,
 
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 
-	#ifdef XIAOMI_CHARGER_RUNIN
+	#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	#endif
-	POWER_SUPPLY_PROP_CHARGE_FULL,
-	POWER_SUPPLY_PROP_CYCLE_COUNT,
 };
+
+
+
 
 static int smb2_batt_get_prop(struct power_supply *psy,
 		enum power_supply_property psp,
@@ -1053,11 +1044,6 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 	union power_supply_propval pval = {0, };
 
 	switch (psp) {
-	#ifdef XIAOMI_CHARGER_RUNIN
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-		val->intval = chg->charging_enabled;
-		break;
-	#endif
 	case POWER_SUPPLY_PROP_STATUS:
 		rc = smblib_get_prop_batt_status(chg, val);
 		break;
@@ -1075,9 +1061,6 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		rc = smblib_get_prop_batt_capacity(chg, val);
-		#ifdef XIAOMI_CHARGER_RUNIN
-		pr_err("lct battery_capacity =%d\n", val->intval);
-		#endif
 		#ifdef CONFIG_CHARGER_RUNIN
 		runin_work(chg, val);
 		#endif
@@ -1118,14 +1101,7 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 		val->intval = get_client_vote_locked(chg->fv_votable,
 				QNOVO_VOTER);
 		break;
-#if 0
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		rc = smblib_get_prop_batt_current_now(chg, val);
-		#ifdef XIAOMI_CHARGER_RUNIN
-		pr_err("lct current_now =%d\n", val->intval);
-		#endif
-		break;
-#endif
+
 	case POWER_SUPPLY_PROP_CURRENT_QNOVO:
 		val->intval = get_client_vote_locked(chg->fcc_votable,
 				QNOVO_VOTER);
@@ -1170,9 +1146,11 @@ static int smb2_batt_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_TEMP:
 		rc = smblib_get_prop_from_bms(chg, psp, val);
 		break;
-	case POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE:
-		val->intval = chg->fcc_stepper_mode;
+	#if defined(CONFIG_KERNEL_CUSTOM_E7T)
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		val->intval = miui_charging_enabled;
 		break;
+	#endif
 	default:
 		pr_err("batt power supply prop %d not supported\n", psp);
 		return -EINVAL;
@@ -1194,11 +1172,6 @@ static int smb2_batt_set_prop(struct power_supply *psy,
 	struct smb_charger *chg = power_supply_get_drvdata(psy);
 
 	switch (prop) {
-	#ifdef XIAOMI_CHARGER_RUNIN
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-		rc = lct_set_prop_input_suspend(chg, val);
-		break;
-	#endif
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 		rc = smblib_set_prop_input_suspend(chg, val);
 		break;
@@ -1272,6 +1245,28 @@ static int smb2_batt_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED:
 		rc = smblib_set_prop_input_current_limited(chg, val);
 		break;
+	#if defined(CONFIG_KERNEL_CUSTOM_E7T)
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		miui_charging_enabled = val->intval;
+		if (miui_charging_enabled){
+			rc = smblib_set_dc_suspend(chg, false);
+			if (rc) {
+				pr_err("Couldn't disable charge rc=%d\n", rc);
+			}
+			rc = smblib_set_usb_suspend(chg, false);
+			if (rc)
+				pr_err("Couldn't disable usb charge rc=%d\n", rc);
+		}else{
+			rc = smblib_set_dc_suspend(chg, true);
+			if (rc) {
+				pr_err("Couldn't enable charge rc=%d\n", rc);
+			}
+			rc = smblib_set_usb_suspend(chg, true);
+			if (rc)
+				pr_err("Couldn't enable usb charge rc=%d\n", rc);
+		}
+		break;
+	#endif
 	default:
 		rc = -EINVAL;
 	}
@@ -1289,12 +1284,12 @@ static int smb2_batt_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_PARALLEL_DISABLE:
 	case POWER_SUPPLY_PROP_DP_DM:
 	case POWER_SUPPLY_PROP_RERUN_AICL:
-	#ifdef XIAOMI_CHARGER_RUNIN
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-	#endif
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED:
 	case POWER_SUPPLY_PROP_STEP_CHARGING_ENABLED:
 	case POWER_SUPPLY_PROP_SW_JEITA_ENABLED:
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+#endif
 		return 1;
 	default:
 		break;
@@ -1695,25 +1690,33 @@ static int smb2_init_hw(struct smb2 *chip)
 	vote(chg->hvdcp_enable_votable, MICRO_USB_VOTER,
 			chg->micro_usb_mode, 0);
 
-#if (defined(CONFIG_KERNEL_CUSTOM_E7S) || defined(CONFIG_KERNEL_CUSTOM_E7T))
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 
 	/* Operate the QC2.0 in 5V/9V mode i.e. Disable 12V */
-		rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
-					                            PULSE_COUNT_QC2P0_12V | PULSE_COUNT_QC2P0_9V,
-					                            PULSE_COUNT_QC2P0_9V);
-		if (rc < 0) {
-				dev_err(chg->dev,
-					    "Couldn't configure QC2.0 to 9V rc=%d\n", rc);
-				return rc;
-		}
-		/* Operate the QC3.0 to limit vbus to 8.0v*/
-		rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
-					                    PULSE_COUNT_QC3P0_MASK, 0xf);
-		if (rc < 0) {
-				dev_err(chg->dev,
-					    "Couldn't configure QC3.0 to 7.6V rc=%d\n", rc);
-				return rc;
-		}
+	rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
+			      PULSE_COUNT_QC2P0_12V | PULSE_COUNT_QC2P0_9V,
+			      PULSE_COUNT_QC2P0_9V);
+	if (rc < 0) {
+		dev_err(chg->dev,
+		        "Couldn't configure QC2.0 to 9V rc=%d\n", rc);
+		return rc;
+	}
+	/* Operate the QC3.0 to limit vbus to 8.0v*/
+	rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
+			      PULSE_COUNT_QC3P0_MASK, 0xf);
+	if (rc < 0) {
+		dev_err(chg->dev,
+		        "Couldn't configure QC3.0 to 7.6V rc=%d\n", rc);
+		return rc;
+	}
+
+	/* lct reconfigure allowed voltage for HVDCP */
+	rc = smblib_write(chg, USBIN_ADAPTER_ALLOW_CFG_REG, USBIN_ADAPTER_ALLOW_5V_OR_9V_TO_12V);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't write to USBIN_ADAPTER_ALLOW_CFG rc=%d\n", rc);
+		return rc;
+	}
+
 #else
 	/* Operate the QC2.0 in 5V/9V mode i.e. Disable 12V */
 	rc = smblib_masked_write(chg, HVDCP_PULSE_COUNT_MAX_REG,
@@ -2419,15 +2422,15 @@ static void smb2_create_debugfs(struct smb2 *chip)
 
 #endif
 
-#ifdef THERMAL_CONFIG_FB
-#if defined(CONFIG_KERNEL_CUSTOM_D2S)
-static ssize_t lct_thermal_video_status_show(struct device *dev,
+#ifdef CONFIG_CHARGER_RUNIN
+static ssize_t smb_battery_test_status_show(struct device *dev,
 					struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", LctIsInVideo);
+	return sprintf(buf, "%d\n", BatteryTestStatus_enable);
 }
-static ssize_t lct_thermal_video_status_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
+
+static ssize_t smb_battery_test_status_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
 {
 	int retval;
 	unsigned int input;
@@ -2435,14 +2438,65 @@ static ssize_t lct_thermal_video_status_store(struct device *dev,
 	if (sscanf(buf, "%u", &input) != 1)
 		retval = -EINVAL;
 	else
-	       LctIsInVideo = input;
+	        BatteryTestStatus_enable = input;
 
-	pr_err("LctIsInVideo = %d\n", LctIsInVideo);
+	pr_err("%s:input = %d, BatteryTestStatus_enable = %d\n", __func__, input, BatteryTestStatus_enable);
 
 	return retval;
 }
+
+void runin_work(struct smb_charger *chip, union power_supply_propval *value)
+{
+	int rc = 0;
+
+	if (!BatteryTestStatus_enable) {
+		if (!charger_enable){
+			rc = smblib_set_dc_suspend(chip, false);
+			if (rc) {
+				pr_err("Couldn't enable charge rc=%d\n", rc);
+			}
+			rc = smblib_set_usb_suspend(chip, false);
+			if (rc)
+				pr_err("Couldn't enable usb charge rc=%d\n", rc);
+			charger_enable = true;
+		}
+		return;
+	}
+	pr_err("capacity = %d\n", value->intval);
+
+	if (value->intval >= 80) {
+		pr_err("smblib_get_prop_batt_capacity >= 80\n");
+		if (charger_enable){
+			rc = smblib_set_dc_suspend(chip, true);
+			if (rc)
+				pr_err("Couldn't enable dc charge rc=%d\n", rc);
+			rc = smblib_set_usb_suspend(chip, true);
+			if (rc)
+				pr_err("Couldn't disenable usb charge rc=%d\n", rc);
+			charger_enable = false;
+		}
+	}
+	else if (value->intval <= 40) {
+		pr_err("smblib_get_prop_batt_capacity <= 40\n");
+		if (!charger_enable){
+			rc = smblib_set_dc_suspend(chip, false);
+			if (rc)
+				pr_err("Couldn't enable dc charge rc=%d\n", rc);
+			rc = smblib_set_usb_suspend(chip, false);
+			if (rc)
+				pr_err("Couldn't enable usb charge rc=%d\n", rc);
+			charger_enable = true;
+		}
+	}
+}
+
+static struct device_attribute attrs[] = {
+	__ATTR(BatteryTestStatus, S_IRUGO | S_IWUSR,
+			smb_battery_test_status_show, smb_battery_test_status_store),
+};
 #endif
 
+#ifdef THERMAL_CONFIG_FB
 static ssize_t lct_thermal_call_status_show(struct device *dev,
 					struct device_attribute *attr, char *buf)
 {
@@ -2457,7 +2511,7 @@ static ssize_t lct_thermal_call_status_store(struct device *dev,
 	if (sscanf(buf, "%u", &input) != 1)
 		retval = -EINVAL;
 	else
-	       LctIsInCall = input;
+	        LctIsInCall = input;
 
 	pr_err("IsInCall = %d\n", LctIsInCall);
 
@@ -2466,10 +2520,6 @@ static ssize_t lct_thermal_call_status_store(struct device *dev,
 static struct device_attribute attrs2[] = {
 	__ATTR(thermalcall, S_IRUGO | S_IWUSR,
 			lct_thermal_call_status_show, lct_thermal_call_status_store),
-#if defined(CONFIG_KERNEL_CUSTOM_D2S)
-	__ATTR(thermalvideo, S_IRUGO | S_IWUSR,
-			lct_thermal_video_status_show, lct_thermal_video_status_store),
-#endif
 };
 
 static void thermal_fb_notifier_resume_work(struct work_struct *work)
@@ -2477,62 +2527,16 @@ static void thermal_fb_notifier_resume_work(struct work_struct *work)
 	struct smb_charger *chg = container_of(work, struct smb_charger, fb_notify_work);
 
 	LctThermal = 1;
-#if defined(CONFIG_KERNEL_CUSTOM_E7S)
-	if ((lct_backlight_off) && (LctIsInCall == 0) /*&& (hwc_check_india == 1)*/)
-	{
-		if (chg->pl.psy) {
-			if (lct_therm_lvl_reserved.intval >= 1)
-				smblib_set_prop_system_temp_level(chg, &lct_therm_india_level);
-			else
-				smblib_set_prop_system_temp_level(chg, &lct_therm_level);
-		}
-		else {
-			if (lct_therm_lvl_reserved.intval >= 2)
-				smblib_set_prop_system_temp_level(chg, &lct_therm_globe_level);
-		}
-	}
-	else if (LctIsInCall == 1)
-		smblib_set_prop_system_temp_level(chg, &lct_therm_call_level);
-	else
-		smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
-	LctThermal = 0;
-#elif defined(CONFIG_KERNEL_CUSTOM_E7T)
+#if defined(CONFIG_KERNEL_CUSTOM_E7T)
 	if (LctIsInCall == 1)
 		smblib_set_prop_system_temp_level(chg, &lct_therm_call_level);
 	else
 		smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
 	LctThermal = 0;
-#elif defined(CONFIG_KERNEL_CUSTOM_D2S)
-	if ((lct_backlight_off) && (LctIsInCall == 0))
-	{
-		if (lct_therm_lvl_reserved.intval >= 2)
-			smblib_set_prop_system_temp_level(chg, &lct_therm_globe_level);
-		else
-			smblib_set_prop_system_temp_level(chg, &lct_therm_level);
-	}
-	else if (LctIsInCall == 1)
-		smblib_set_prop_system_temp_level(chg, &lct_therm_call_level);
-	else
-		smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
-	LctThermal = 0;
-#elif  defined(CONFIG_KERNEL_CUSTOM_F7A)
-		if ((lct_backlight_off) && (LctIsInCall == 0))
-		{
-			if (lct_therm_lvl_reserved.intval >= 2)
-			smblib_set_prop_system_temp_level(chg, &lct_therm_globe_level);
-		else
-			smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
-		}
-		else if (LctIsInCall == 1)
-			smblib_set_prop_system_temp_level(chg, &lct_therm_call_level);
-		else
-			smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
-		LctThermal = 0;
-
 #else
-	if ((lct_backlight_off) && (LctIsInCall == 0) && (hwc_check_india == 0))
-		smblib_set_prop_system_temp_level(chg, &lct_therm_level);
-	else if ((lct_backlight_off) && (LctIsInCall == 0) && (hwc_check_india == 1))
+	 if ((lct_backlight_off) && (LctIsInCall == 0) && (hwc_check_india == 0))
+		 smblib_set_prop_system_temp_level(chg, &lct_therm_level);
+	  else if ((lct_backlight_off) && (LctIsInCall == 0) && (hwc_check_india == 1))
 	{
 		if (lct_therm_lvl_reserved.intval >= 1)
 			smblib_set_prop_system_temp_level(chg, &lct_therm_india_level);
@@ -2544,6 +2548,7 @@ static void thermal_fb_notifier_resume_work(struct work_struct *work)
 	else
 		smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
 	LctThermal = 0;
+
 #endif
 }
 
@@ -2597,7 +2602,9 @@ static int smb2_probe(struct platform_device *pdev)
 	int rc = 0;
 	union power_supply_propval val;
 	int usb_present, batt_present, batt_health, batt_charge_type;
-
+	#ifdef CONFIG_CHARGER_RUNIN
+	unsigned char attr_count;
+	#endif
 	#ifdef THERMAL_CONFIG_FB
 	unsigned char attr_count2;
 	#endif
@@ -2708,6 +2715,17 @@ static int smb2_probe(struct platform_device *pdev)
 		pr_err("Couldn't initialize batt psy rc=%d\n", rc);
 		goto cleanup;
 	}
+	#ifdef CONFIG_CHARGER_RUNIN
+	pr_info("enter sysfs create file\n");
+	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
+		    rc = sysfs_create_file(&chg->dev->kobj,
+						&attrs[attr_count].attr);
+			if (rc < 0) {
+		        sysfs_remove_file(&chg->dev->kobj,
+						&attrs[attr_count].attr);
+			}
+		}
+	#endif
 
 	#ifdef THERMAL_CONFIG_FB
 	pr_info("enter sysfs create file thermal\n");
@@ -2772,16 +2790,12 @@ static int smb2_probe(struct platform_device *pdev)
 	device_init_wakeup(chg->dev, true);
 
 	#ifdef THERMAL_CONFIG_FB
-	lct_therm_lvl_reserved.intval = 0;
-	lct_therm_level.intval = 0;
+ 	lct_therm_lvl_reserved.intval = 0;
+ 	lct_therm_level.intval = 0;
 	lct_backlight_off = false;
 	INIT_WORK(&chg->fb_notify_work, thermal_fb_notifier_resume_work);
 	/* register suspend and resume fucntion*/
 	lct_register_powermanger(chg);
-	#endif
-
-	#ifdef XIAOMI_CHARGER_RUNIN
-	chg->charging_enabled = true;
 	#endif
 
 	pr_info("QPNP SMB2 probed successfully usb:present=%d type=%d batt:present = %d health = %d charge = %d\n",
