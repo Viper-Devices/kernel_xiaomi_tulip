@@ -24,6 +24,11 @@ extern bool synaptics_gesture_enable_flag;
 #endif
 
 #define MAX_I2C_CMDS  16
+extern bool enable_gesture_mode;
+extern bool synaptics_gesture_func_on;
+#ifdef CONFIG_KERNEL_CUSTOM_E7T
+extern bool focal_gesture_mode;
+#endif
 void dss_reg_w(struct dss_io_data *io, u32 offset, u32 value, u32 debug)
 {
 	u32 in_val;
@@ -268,21 +273,30 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 		}
 	} else {
 		for (i = num_vreg-1; i >= 0; i--) {
+#ifdef CONFIG_KERNEL_CUSTOM_E7T
 			if (ESD_TE_status){
-				printk(KERN_ERR "panel esd check recovery \n");
-				if ((strcmp(in_vreg[i].vreg_name, "wqhd-vddio") == 0)) {
-						printk(KERN_ERR "panel '%s' power continus supply\n", in_vreg[i].vreg_name);
+				printk("nova panel esd check recovery \n");
+			}else {
+				/* vddio l14 continus supply */
+				if (enable_gesture_mode || focal_gesture_mode) {
+					if ((strcmp(in_vreg[i].vreg_name, "lab") == 0) || (strcmp(in_vreg[i].vreg_name, "ibb") == 0)){
+						printk("%s is not disable\n", in_vreg[i].vreg_name);
 						continue;
+					}
 				}
 			}
-#ifdef CONFIG_KERNEL_CUSTOM_F7A
-			/* vddio lab ibb continus supply */
-			if (enable_gesture_mode || synaptics_gesture_enable_flag) {
-				if ((strcmp(in_vreg[i].vreg_name, "lab") == 0) ||
-						(strcmp(in_vreg[i].vreg_name, "ibb") == 0) ||
-						(strcmp(in_vreg[i].vreg_name, "wqhd-vddio") == 0)) {
-					printk(KERN_ERR "[LCD][TP][Gesture][suspend] '%s' power continus supply\n", in_vreg[i].vreg_name);
-					continue;
+
+#else
+
+			if (ESD_TE_status){
+				printk("nova panel esd check recovery \n");
+			}else {
+				/* vddio l14 continus supply */
+				if (enable_gesture_mode || synaptics_gesture_func_on) {
+					if ((strcmp(in_vreg[i].vreg_name, "lab") == 0) || (strcmp(in_vreg[i].vreg_name, "ibb") == 0)){
+						printk("%s is not disable\n", in_vreg[i].vreg_name);
+						continue;
+					}
 				}
 			}
 #endif
